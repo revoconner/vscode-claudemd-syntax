@@ -1,37 +1,154 @@
 {
-    "name": "vscode-claudemd-syntax",
-    "displayName": "Syntax highlighter for CLAUDE.md",
-    "description": "An extension to beautify and highlight syntax of CLAUDE.md files including markdown and non canonical XML tags, or a mix and match of both.",
-    "version": "1.0.0",
-    "engines": {
-        "vscode": "^1.85.0"
-    },
-    "author": {
+  "name": "vscode-claudemd-syntax",
+  "displayName": "Syntax highlighter for CLAUDE.md",
+  "description": "An extension to beautify and highlight syntax of CLAUDE.md files including markdown and non canonical XML tags, or a mix and match of both.",
+  "version": "1.0.0",
+  "publisher": "revoconner",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "author": {
     "name": "Rev"
-    },
-    "license": "unlicensed",
-    "repository": {
-      "type": "git",
-      "url": "https://github.com/revoconner/vscode-claudemd-syntax"
-    },
-    "categories": ["Other"],
-    "activationEvents": [],
-    "main": "./out/extension.js",
-    "contributes": {
+  },
+  "license": "unlicensed",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/revoconner/vscode-claudemd-syntax"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claudemd",
+    "CLAUDE.md",
+    "AGENT.md",
+    "markdown",
+    "xml",
+    "syntax highlighting",
+    "anthropic"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "claudemd",
+        "aliases": [
+          "ClaudeMD",
+          "claudemd",
+          "CLAUDE.md",
+          "AGENT.md"
+        ],
+        "extensions": [],
+        "filenames": [
+          "CLAUDE.md",
+          "claude.md",
+          "AGENT.md",
+          "agent.md"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "claudemd",
+        "scopeName": "text.html.claudemd",
+        "path": "./syntaxes/claudemd.tmLanguage.json"
+      }
+    ],
     "commands": [
       {
         "command": "claudemd.beautify",
-        "title": "CLAUDEmd: Beautify syntax"
+        "title": "Beautify Document",
+        "category": "ClaudeMD"
       },
       {
         "command": "claudemd.preview",
-        "title": "CLAUDEmd: convert xml tags into markdown temporarily and then preview"
+        "title": "Open Preview",
+        "category": "ClaudeMD",
+        "icon": {
+          "light": "$(open-preview)",
+          "dark": "$(open-preview)"
+        }
       },
       {
         "command": "claudemd.folding_range",
-        "title": "CLAUDEmd: Create folding range for all xml tags, as well as markdowm syntax"
+        "title": "Fold All Regions",
+        "category": "ClaudeMD"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "claudemd.preview",
+          "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "claudemd.beautify",
+          "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd",
+          "group": "1_modification"
+        },
+        {
+          "command": "claudemd.preview",
+          "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd",
+          "group": "navigation"
+        },
+        {
+          "command": "claudemd.folding_range",
+          "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "claudemd.beautify",
+          "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd || editorLangId == markdown"
+        },
+        {
+          "command": "claudemd.preview",
+          "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd || editorLangId == markdown"
+        },
+        {
+          "command": "claudemd.folding_range",
+          "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd || editorLangId == markdown"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "claudemd.preview",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd"
+      },
+      {
+        "command": "claudemd.beautify",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b",
+        "when": "resourceFilename =~ /(CLAUDE|AGENT)\\.md$/i || editorLangId == claudemd"
+      }
+    ],
+    "configuration": {
+      "title": "ClaudeMD",
+      "properties": {
+        "claudemd.indentSize": {
+          "type": "number",
+          "default": 2,
+          "description": "Number of spaces used for indentation when beautifying"
+        },
+        "claudemd.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect CLAUDE.md files and apply syntax highlighting"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

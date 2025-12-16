@@ -1,0 +1,317 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "ClaudeMD",
+  "scopeName": "text.html.claudemd",
+  "patterns": [
+    { "include": "#frontmatter" },
+    { "include": "#block" }
+  ],
+  "repository": {
+    "frontmatter": {
+      "begin": "\\A(-{3})\\s*$",
+      "end": "^(-{3})\\s*$",
+      "beginCaptures": { "1": { "name": "punctuation.definition.frontmatter.claudemd" } },
+      "endCaptures": { "1": { "name": "punctuation.definition.frontmatter.claudemd" } },
+      "name": "meta.frontmatter.claudemd",
+      "patterns": [{ "include": "source.yaml" }]
+    },
+    "block": {
+      "patterns": [
+        { "include": "#heading" },
+        { "include": "#horizontal-rule" },
+        { "include": "#fenced-code-block" },
+        { "include": "#blockquote" },
+        { "include": "#list" },
+        { "include": "#xml-tag" },
+        { "include": "#inline" }
+      ]
+    },
+    "heading": {
+      "patterns": [
+        {
+          "match": "^(#{6})\\s+(.+?)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.claudemd" },
+            "2": { "name": "entity.name.section.claudemd", "patterns": [{ "include": "#inline" }] }
+          },
+          "name": "markup.heading.6.claudemd"
+        },
+        {
+          "match": "^(#{5})\\s+(.+?)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.claudemd" },
+            "2": { "name": "entity.name.section.claudemd", "patterns": [{ "include": "#inline" }] }
+          },
+          "name": "markup.heading.5.claudemd"
+        },
+        {
+          "match": "^(#{4})\\s+(.+?)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.claudemd" },
+            "2": { "name": "entity.name.section.claudemd", "patterns": [{ "include": "#inline" }] }
+          },
+          "name": "markup.heading.4.claudemd"
+        },
+        {
+          "match": "^(#{3})\\s+(.+?)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.claudemd" },
+            "2": { "name": "entity.name.section.claudemd", "patterns": [{ "include": "#inline" }] }
+          },
+          "name": "markup.heading.3.claudemd"
+        },
+        {
+          "match": "^(#{2})\\s+(.+?)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.claudemd" },
+            "2": { "name": "entity.name.section.claudemd", "patterns": [{ "include": "#inline" }] }
+          },
+          "name": "markup.heading.2.claudemd"
+        },
+        {
+          "match": "^(#)\\s+(.+?)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.claudemd" },
+            "2": { "name": "entity.name.section.claudemd", "patterns": [{ "include": "#inline" }] }
+          },
+          "name": "markup.heading.1.claudemd"
+        }
+      ]
+    },
+    "horizontal-rule": {
+      "match": "^\\s*([-*_]){3,}\\s*$",
+      "name": "meta.separator.claudemd"
+    },
+    "fenced-code-block": {
+      "begin": "^\\s*(`{3,}|~{3,})\\s*(\\S+)?\\s*$",
+      "end": "^\\s*\\1\\s*$",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.code.claudemd" },
+        "2": { "name": "fenced_code.block.language.claudemd" }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.code.claudemd" }
+      },
+      "name": "markup.fenced_code.block.claudemd",
+      "contentName": "meta.embedded.block.code"
+    },
+    "blockquote": {
+      "begin": "^\\s*(>)\\s?",
+      "end": "(?=^\\s*$)|(?=^\\s*[^>\\s])",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.quote.claudemd" }
+      },
+      "name": "markup.quote.claudemd",
+      "patterns": [
+        { "include": "#block" }
+      ]
+    },
+    "list": {
+      "patterns": [
+        {
+          "match": "^\\s*([-*+])\\s+",
+          "captures": {
+            "1": { "name": "punctuation.definition.list.begin.claudemd" }
+          },
+          "name": "markup.list.unnumbered.claudemd"
+        },
+        {
+          "match": "^\\s*(\\d+\\.)\\s+",
+          "captures": {
+            "1": { "name": "punctuation.definition.list.begin.claudemd" }
+          },
+          "name": "markup.list.numbered.claudemd"
+        }
+      ]
+    },
+    "xml-tag": {
+      "patterns": [
+        { "include": "#xml-comment" },
+        { "include": "#xml-closing-tag" },
+        { "include": "#xml-self-closing-tag" },
+        { "include": "#xml-opening-tag" }
+      ]
+    },
+    "xml-comment": {
+      "begin": "<!--",
+      "end": "-->",
+      "name": "comment.block.xml.claudemd",
+      "captures": {
+        "0": { "name": "punctuation.definition.comment.xml.claudemd" }
+      }
+    },
+    "xml-opening-tag": {
+      "begin": "(<)([a-zA-Z_][a-zA-Z0-9_-]*)",
+      "end": "(>)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.xml.claudemd" },
+        "2": { "name": "entity.name.tag.xml.claudemd" }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.end.xml.claudemd" }
+      },
+      "name": "meta.tag.xml.claudemd",
+      "patterns": [
+        { "include": "#xml-attribute" }
+      ]
+    },
+    "xml-closing-tag": {
+      "match": "(</)([a-zA-Z_][a-zA-Z0-9_-]*)(>)",
+      "captures": {
+        "1": { "name": "punctuation.definition.tag.begin.xml.claudemd" },
+        "2": { "name": "entity.name.tag.xml.claudemd" },
+        "3": { "name": "punctuation.definition.tag.end.xml.claudemd" }
+      },
+      "name": "meta.tag.xml.claudemd"
+    },
+    "xml-self-closing-tag": {
+      "begin": "(<)([a-zA-Z_][a-zA-Z0-9_-]*)",
+      "end": "(/>)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.xml.claudemd" },
+        "2": { "name": "entity.name.tag.xml.claudemd" }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.end.xml.claudemd" }
+      },
+      "name": "meta.tag.xml.claudemd",
+      "patterns": [
+        { "include": "#xml-attribute" }
+      ]
+    },
+    "xml-attribute": {
+      "patterns": [
+        {
+          "match": "\\s+([a-zA-Z_][a-zA-Z0-9_-]*)\\s*(=)\\s*(\"[^\"]*\"|'[^']*')",
+          "captures": {
+            "1": { "name": "entity.other.attribute-name.xml.claudemd" },
+            "2": { "name": "punctuation.separator.key-value.xml.claudemd" },
+            "3": { "name": "string.quoted.xml.claudemd" }
+          }
+        },
+        {
+          "match": "\\s+([a-zA-Z_][a-zA-Z0-9_-]*)\\s*(=)\\s*([^\\s>]+)",
+          "captures": {
+            "1": { "name": "entity.other.attribute-name.xml.claudemd" },
+            "2": { "name": "punctuation.separator.key-value.xml.claudemd" },
+            "3": { "name": "string.unquoted.xml.claudemd" }
+          }
+        },
+        {
+          "match": "\\s+([a-zA-Z_][a-zA-Z0-9_-]*)",
+          "captures": {
+            "1": { "name": "entity.other.attribute-name.xml.claudemd" }
+          }
+        }
+      ]
+    },
+    "inline": {
+      "patterns": [
+        { "include": "#escape" },
+        { "include": "#inline-code" },
+        { "include": "#bold-italic" },
+        { "include": "#bold" },
+        { "include": "#italic" },
+        { "include": "#strikethrough" },
+        { "include": "#link" },
+        { "include": "#image" },
+        { "include": "#xml-tag" }
+      ]
+    },
+    "escape": {
+      "match": "\\\\[\\\\`*_{}\\[\\]()#+\\-.!<>]",
+      "name": "constant.character.escape.claudemd"
+    },
+    "inline-code": {
+      "patterns": [
+        {
+          "match": "(`{2,})([^`]+?)\\1",
+          "captures": {
+            "1": { "name": "punctuation.definition.raw.claudemd" },
+            "2": { "name": "markup.inline.raw.string.claudemd" }
+          },
+          "name": "markup.inline.raw.claudemd"
+        },
+        {
+          "match": "(`)([^`]+?)(`)",
+          "captures": {
+            "1": { "name": "punctuation.definition.raw.claudemd" },
+            "2": { "name": "markup.inline.raw.string.claudemd" },
+            "3": { "name": "punctuation.definition.raw.claudemd" }
+          },
+          "name": "markup.inline.raw.claudemd"
+        }
+      ]
+    },
+    "bold-italic": {
+      "patterns": [
+        {
+          "match": "(\\*{3}|_{3})(?=\\S)(.+?)(?<=\\S)\\1",
+          "captures": {
+            "1": { "name": "punctuation.definition.bold.italic.claudemd" },
+            "2": { "name": "markup.bold.italic.claudemd" }
+          },
+          "name": "markup.bold.italic.claudemd"
+        }
+      ]
+    },
+    "bold": {
+      "patterns": [
+        {
+          "match": "(\\*{2}|_{2})(?=\\S)(.+?)(?<=\\S)\\1",
+          "captures": {
+            "1": { "name": "punctuation.definition.bold.claudemd" },
+            "2": { "name": "markup.bold.claudemd" }
+          },
+          "name": "markup.bold.claudemd"
+        }
+      ]
+    },
+    "italic": {
+      "patterns": [
+        {
+          "match": "(?<![*_])(\\*|_)(?=\\S)([^*_]+?)(?<=\\S)\\1(?![*_])",
+          "captures": {
+            "1": { "name": "punctuation.definition.italic.claudemd" },
+            "2": { "name": "markup.italic.claudemd" }
+          },
+          "name": "markup.italic.claudemd"
+        }
+      ]
+    },
+    "strikethrough": {
+      "match": "(~~)(?=\\S)(.+?)(?<=\\S)(~~)",
+      "captures": {
+        "1": { "name": "punctuation.definition.strikethrough.claudemd" },
+        "2": { "name": "markup.strikethrough.claudemd" },
+        "3": { "name": "punctuation.definition.strikethrough.claudemd" }
+      },
+      "name": "markup.strikethrough.claudemd"
+    },
+    "link": {
+      "patterns": [
+        {
+          "match": "(\\[)([^\\]]+)(\\])(\\()([^)]+)(\\))",
+          "captures": {
+            "1": { "name": "punctuation.definition.link.claudemd" },
+            "2": { "name": "string.other.link.title.claudemd" },
+            "3": { "name": "punctuation.definition.link.claudemd" },
+            "4": { "name": "punctuation.definition.link.claudemd" },
+            "5": { "name": "markup.underline.link.claudemd" },
+            "6": { "name": "punctuation.definition.link.claudemd" }
+          },
+          "name": "meta.link.claudemd"
+        }
+      ]
+    },
+    "image": {
+      "match": "(!)\\[(.*?)\\]\\((.*?)\\)",
+      "captures": {
+        "1": { "name": "punctuation.definition.image.claudemd" },
+        "2": { "name": "string.other.link.description.claudemd" },
+        "3": { "name": "markup.underline.link.image.claudemd" }
+      },
+      "name": "meta.image.claudemd"
+    }
+  }
+}
