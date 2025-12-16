@@ -127,9 +127,8 @@
     "xml-tag": {
       "patterns": [
         { "include": "#xml-comment" },
-        { "include": "#xml-closing-tag" },
         { "include": "#xml-self-closing-tag" },
-        { "include": "#xml-opening-tag" }
+        { "include": "#xml-element" }
       ]
     },
     "xml-comment": {
@@ -140,43 +139,34 @@
         "0": { "name": "punctuation.definition.comment.xml.claudemd" }
       }
     },
-    "xml-opening-tag": {
-      "begin": "(<)([a-zA-Z_][a-zA-Z0-9_-]*)",
-      "end": "(>)",
+    "xml-self-closing-tag": {
+      "match": "(<)([a-zA-Z_][a-zA-Z0-9_-]*)([^/]*?)(/>)",
+      "captures": {
+        "1": { "name": "punctuation.definition.tag.begin.xml.claudemd" },
+        "2": { "name": "entity.name.tag.xml.claudemd" },
+        "3": { "patterns": [{ "include": "#xml-attribute" }] },
+        "4": { "name": "punctuation.definition.tag.end.xml.claudemd" }
+      },
+      "name": "meta.tag.self-closing.xml.claudemd"
+    },
+    "xml-element": {
+      "begin": "(<)([a-zA-Z_][a-zA-Z0-9_-]*)([^>]*)(>)",
+      "end": "(</)(\\2)(>)",
       "beginCaptures": {
         "1": { "name": "punctuation.definition.tag.begin.xml.claudemd" },
-        "2": { "name": "entity.name.tag.xml.claudemd" }
+        "2": { "name": "entity.name.tag.xml.claudemd" },
+        "3": { "patterns": [{ "include": "#xml-attribute" }] },
+        "4": { "name": "punctuation.definition.tag.end.xml.claudemd" }
       },
       "endCaptures": {
-        "1": { "name": "punctuation.definition.tag.end.xml.claudemd" }
-      },
-      "name": "meta.tag.xml.claudemd",
-      "patterns": [
-        { "include": "#xml-attribute" }
-      ]
-    },
-    "xml-closing-tag": {
-      "match": "(</)([a-zA-Z_][a-zA-Z0-9_-]*)(>)",
-      "captures": {
         "1": { "name": "punctuation.definition.tag.begin.xml.claudemd" },
         "2": { "name": "entity.name.tag.xml.claudemd" },
         "3": { "name": "punctuation.definition.tag.end.xml.claudemd" }
       },
-      "name": "meta.tag.xml.claudemd"
-    },
-    "xml-self-closing-tag": {
-      "begin": "(<)([a-zA-Z_][a-zA-Z0-9_-]*)",
-      "end": "(/>)",
-      "beginCaptures": {
-        "1": { "name": "punctuation.definition.tag.begin.xml.claudemd" },
-        "2": { "name": "entity.name.tag.xml.claudemd" }
-      },
-      "endCaptures": {
-        "1": { "name": "punctuation.definition.tag.end.xml.claudemd" }
-      },
-      "name": "meta.tag.xml.claudemd",
+      "name": "meta.element.xml.claudemd",
+      "contentName": "meta.element.content.xml.claudemd",
       "patterns": [
-        { "include": "#xml-attribute" }
+        { "include": "#block" }
       ]
     },
     "xml-attribute": {
