@@ -1,0 +1,46 @@
+{
+    "name": "vscode-claudemd-syntax",
+    "displayName": "Syntax highlighter for CLAUDE.md",
+    "description": "An extension to beautify and highlight syntax of CLAUDE.md files including markdown and non canonical XML tags, or a mix and match of both.",
+    "version": "1.0.0",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "author": {
+    "name": "Rev"
+    },
+    "license": "unlicensed",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/revoconner/vscode-claudemd-syntax"
+    },
+    "categories": ["Other"],
+    "activationEvents": [],
+    "main": "./out/extension.js",
+    "contributes": {
+    "commands": [
+      {
+        "command": "claudemd.beautify",
+        "title": "CLAUDEmd: Beautify syntax"
+      },
+      {
+        "command": "claudemd.preview",
+        "title": "CLAUDEmd: convert xml tags into markdown temporarily and then preview"
+      },
+      {
+        "command": "claudemd.folding_range",
+        "title": "CLAUDEmd: Create folding range for all xml tags, as well as markdowm syntax"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
