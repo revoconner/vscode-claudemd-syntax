@@ -164,7 +164,6 @@
         "3": { "name": "punctuation.definition.tag.end.xml.claudemd" }
       },
       "name": "meta.element.xml.claudemd",
-      "contentName": "meta.element.content.xml.claudemd",
       "patterns": [
         { "include": "#block" }
       ]

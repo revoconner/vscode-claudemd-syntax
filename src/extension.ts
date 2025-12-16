@@ -96,8 +96,8 @@ function processLine(line: string, tagStack: TagInfo[]): string | null {
 
         tagStack.push({ name: tagName, attributes, depth });
 
-        // Convert to header (depth 0 = ##, depth 1 = ###, etc.)
-        const headerLevel = Math.min(depth + 2, 6);
+        // Convert to header (depth 0 = #, depth 1 = ##, etc.)
+        const headerLevel = Math.min(depth + 1, 6);
         const headerPrefix = '#'.repeat(headerLevel);
         const escapedName = escapeMarkdownInHeader(tagName);
         const attrStr = attributes ? ` (${escapeMarkdownInHeader(attributes)})` : '';
@@ -114,7 +114,7 @@ function processLine(line: string, tagStack: TagInfo[]): string | null {
         const content = inlineTagMatch[3].trim();
         const depth = tagStack.length;
 
-        const headerLevel = Math.min(depth + 2, 6);
+        const headerLevel = Math.min(depth + 1, 6);
         const headerPrefix = '#'.repeat(headerLevel);
         const escapedName = escapeMarkdownInHeader(tagName);
         const attrStr = attributes ? ` (${escapeMarkdownInHeader(attributes)})` : '';
@@ -133,7 +133,7 @@ function processLine(line: string, tagStack: TagInfo[]): string | null {
 
         tagStack.push({ name: tagName, attributes, depth });
 
-        const headerLevel = Math.min(depth + 2, 6);
+        const headerLevel = Math.min(depth + 1, 6);
         const headerPrefix = '#'.repeat(headerLevel);
         const escapedName = escapeMarkdownInHeader(tagName);
         const attrStr = attributes ? ` (${escapeMarkdownInHeader(attributes)})` : '';
