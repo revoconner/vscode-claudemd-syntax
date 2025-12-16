@@ -149,9 +149,9 @@ function processLine(line: string, tagStack: TagInfo[]): string | null {
 }
 
 function processContentLine(line: string): string {
-    // Preserve inline code by replacing temporarily
+    // Strip leading whitespace (from beautification indentation)
     const codeSegments: string[] = [];
-    let processed = line;
+    let processed = line.trimStart();
 
     // Replace inline code with placeholders
     processed = processed.replace(/`[^`]+`/g, (match) => {
@@ -309,22 +309,26 @@ function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
     const indent = '  ';
     let depth = 0;
     let inCodeBlock = false;
+    let codeBlockDepth = 0;
 
     for (const line of lines) {
         // Handle code blocks
         if (/^(\s*)(`{3,}|~{3,})/.test(line)) {
             if (!inCodeBlock) {
-                result.push(indent.repeat(depth) + line.trim());
+                // Code block at same level as containing tag (depth - 1)
+                codeBlockDepth = Math.max(0, depth - 1);
+                result.push(indent.repeat(codeBlockDepth) + line.trim());
                 inCodeBlock = true;
             } else {
-                result.push(indent.repeat(depth) + line.trim());
+                result.push(indent.repeat(codeBlockDepth) + line.trim());
                 inCodeBlock = false;
             }
             continue;
         }
 
         if (inCodeBlock) {
-            result.push(line); // Preserve exactly
+            // Indent code content by same amount as the fences
+            result.push(indent.repeat(codeBlockDepth) + line.trimStart());
             continue;
         }
 
@@ -356,8 +360,9 @@ function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
             continue;
         }
 
-        // Regular content
-        result.push(indent.repeat(depth) + trimmed);
+        // Regular content - indent same as containing tag (depth - 1), not deeper
+        const contentDepth = Math.max(0, depth - 1);
+        result.push(indent.repeat(contentDepth) + trimmed);
     }
 
     const fullRange = new vscode.Range(
