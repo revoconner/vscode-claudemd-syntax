@@ -197,8 +197,7 @@
     "inline": {
       "patterns": [
         { "include": "#escape" },
-        { "include": "#inline-code" },
-        { "include": "#bold-italic" },
+        { "include": "#raw" },
         { "include": "#bold" },
         { "include": "#italic" },
         { "include": "#strikethrough" },
@@ -211,96 +210,88 @@
       "match": "\\\\[\\\\`*_{}\\[\\]()#+\\-.!<>]",
       "name": "constant.character.escape.claudemd"
     },
-    "inline-code": {
-      "patterns": [
-        {
-          "match": "(`{2,})([^`]+?)\\1",
-          "captures": {
-            "1": { "name": "punctuation.definition.raw.claudemd" },
-            "2": { "name": "markup.inline.raw.string.claudemd" }
-          },
-          "name": "markup.inline.raw.claudemd"
-        },
-        {
-          "match": "(`)([^`]+?)(`)",
-          "captures": {
-            "1": { "name": "punctuation.definition.raw.claudemd" },
-            "2": { "name": "markup.inline.raw.string.claudemd" },
-            "3": { "name": "punctuation.definition.raw.claudemd" }
-          },
-          "name": "markup.inline.raw.claudemd"
-        }
-      ]
-    },
-    "bold-italic": {
-      "patterns": [
-        {
-          "match": "(\\*{3}|_{3})(?=\\S)(.+?)(?<=\\S)\\1",
-          "captures": {
-            "1": { "name": "punctuation.definition.bold.italic.claudemd" },
-            "2": { "name": "markup.bold.italic.claudemd" }
-          },
-          "name": "markup.bold.italic.claudemd"
-        }
-      ]
+    "raw": {
+      "match": "(`+)((?:[^`]|(?!(?<!`)\\1(?!`))`)*+)(\\1)",
+      "captures": {
+        "1": { "name": "punctuation.definition.raw.markdown" },
+        "2": { "name": "markup.inline.raw.string.markdown" },
+        "3": { "name": "punctuation.definition.raw.markdown" }
+      },
+      "name": "markup.inline.raw.string.markdown"
     },
     "bold": {
+      "begin": "(\\*\\*|__)(?=\\S)",
+      "end": "(\\1)|(?=\\n\\n)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.bold.markdown" }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.bold.markdown" }
+      },
+      "name": "markup.bold.markdown",
       "patterns": [
-        {
-          "match": "(\\*{2}|_{2})(?=\\S)(.+?)(?<=\\S)\\1",
-          "captures": {
-            "1": { "name": "punctuation.definition.bold.claudemd" },
-            "2": { "name": "markup.bold.claudemd" }
-          },
-          "name": "markup.bold.claudemd"
-        }
+        { "include": "#raw" },
+        { "include": "#italic" },
+        { "include": "#link" },
+        { "include": "#image" },
+        { "include": "#escape" }
       ]
     },
     "italic": {
+      "begin": "(?<![*_\\w])(\\*|_)(?=[^\\s*_])",
+      "end": "(\\1)(?![*_\\w])|(?=\\n\\n)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.italic.markdown" }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.italic.markdown" }
+      },
+      "name": "markup.italic.markdown",
       "patterns": [
-        {
-          "match": "(?<![*_])(\\*|_)(?=\\S)([^*_]+?)(?<=\\S)\\1(?![*_])",
-          "captures": {
-            "1": { "name": "punctuation.definition.italic.claudemd" },
-            "2": { "name": "markup.italic.claudemd" }
-          },
-          "name": "markup.italic.claudemd"
-        }
+        { "include": "#raw" },
+        { "include": "#link" },
+        { "include": "#image" },
+        { "include": "#escape" }
       ]
     },
     "strikethrough": {
-      "match": "(~~)(?=\\S)(.+?)(?<=\\S)(~~)",
-      "captures": {
-        "1": { "name": "punctuation.definition.strikethrough.claudemd" },
-        "2": { "name": "markup.strikethrough.claudemd" },
-        "3": { "name": "punctuation.definition.strikethrough.claudemd" }
+      "begin": "(~~)(?=\\S)",
+      "end": "(\\1)|(?=\\n\\n)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.strikethrough.markdown" }
       },
-      "name": "markup.strikethrough.claudemd"
-    },
-    "link": {
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.strikethrough.markdown" }
+      },
+      "name": "markup.strikethrough.markdown",
       "patterns": [
-        {
-          "match": "(\\[)([^\\]]+)(\\])(\\()([^)]+)(\\))",
-          "captures": {
-            "1": { "name": "punctuation.definition.link.claudemd" },
-            "2": { "name": "string.other.link.title.claudemd" },
-            "3": { "name": "punctuation.definition.link.claudemd" },
-            "4": { "name": "punctuation.definition.link.claudemd" },
-            "5": { "name": "markup.underline.link.claudemd" },
-            "6": { "name": "punctuation.definition.link.claudemd" }
-          },
-          "name": "meta.link.claudemd"
-        }
+        { "include": "#raw" },
+        { "include": "#bold" },
+        { "include": "#italic" },
+        { "include": "#link" },
+        { "include": "#escape" }
       ]
     },
-    "image": {
-      "match": "(!)\\[(.*?)\\]\\((.*?)\\)",
+    "link": {
+      "match": "(\\[)([^\\]]*)(\\])(\\()([^)]*)(\\))",
       "captures": {
-        "1": { "name": "punctuation.definition.image.claudemd" },
-        "2": { "name": "string.other.link.description.claudemd" },
-        "3": { "name": "markup.underline.link.image.claudemd" }
+        "1": { "name": "punctuation.definition.link.markdown" },
+        "2": { "name": "string.other.link.title.markdown" },
+        "3": { "name": "punctuation.definition.link.markdown" },
+        "4": { "name": "punctuation.definition.link.markdown" },
+        "5": { "name": "markup.underline.link.markdown" },
+        "6": { "name": "punctuation.definition.link.markdown" }
       },
-      "name": "meta.image.claudemd"
+      "name": "meta.link.inline.markdown"
+    },
+    "image": {
+      "match": "(!)\\[([^\\]]*)\\]\\(([^)]*)\\)",
+      "captures": {
+        "1": { "name": "punctuation.definition.image.markdown" },
+        "2": { "name": "string.other.link.description.markdown" },
+        "3": { "name": "markup.underline.link.image.markdown" }
+      },
+      "name": "meta.image.inline.markdown"
     }
   }
 }
