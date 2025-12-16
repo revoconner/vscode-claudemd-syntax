@@ -3,183 +3,175 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 
-// TYPES AND INTERFACES
+// TYPES
 
-interface XmlTag {
+interface TagInfo {
     name: string;
-    line: number;
-    indent: number;
-    isOpening: boolean;
-    isClosing: boolean;
-    isSelfClosing: boolean;
-    attributes: Map<string, string>;
-    startIndex: number;
-    endIndex: number;
+    attributes: string;
+    depth: number;
 }
 
-interface MarkdownHeader {
-    level: number;
-    line: number;
-    text: string;
-}
+// CONVERSION - ClaudeMD to Standard Markdown
 
-interface DocumentStructure {
-    xmlTags: XmlTag[];
-    headers: MarkdownHeader[];
-    horizontalRules: number[];
-}
-
-// PARSING UTILITIES
-
-/**
- * Remove content inside backticks to avoid parsing XML-like content within code
- */
-function maskCodeContent(text: string): { masked: string; codeBlocks: string[] } {
-    const codeBlocks: string[] = [];
-
-    // Mask inline code (backticks) - handle multiple backticks first
-    let masked = text.replace(/(`{2,})([^`]+?)\1/g, (match) => {
-        const index = codeBlocks.length;
-        codeBlocks.push(match);
-        return `\x00CODE${index}\x00`;
-    });
-
-    // Mask single backtick inline code
-    masked = masked.replace(/`([^`]+)`/g, (match) => {
-        const index = codeBlocks.length;
-        codeBlocks.push(match);
-        return `\x00CODE${index}\x00`;
-    });
-
-    return { masked, codeBlocks };
-}
-
-/**
- * Restore masked code content
- */
-function unmaskCodeContent(text: string, codeBlocks: string[]): string {
-    return text.replace(/\x00CODE(\d+)\x00/g, (_, index) => codeBlocks[parseInt(index)]);
-}
-
-function parseDocumentText(text: string): DocumentStructure {
-    const xmlTags: XmlTag[] = [];
-    const headers: MarkdownHeader[] = [];
-    const horizontalRules: number[] = [];
-
+function convertClaudeMdToMarkdown(text: string): string {
     const lines = text.split(/\r?\n/);
+    const output: string[] = [];
 
-    // Track if we're inside a fenced code block
-    let inCodeBlock = false;
-    const codeBlockRegex = /^(\s*)(`{3,}|~{3,})/;
-    const headerRegex = /^(#{1,6})\s+(.+?)\s*$/;
-    const horizontalRuleRegex = /^\s*([-*_]){3,}\s*$/;
+    // State tracking
+    let inFencedCodeBlock = false;
+    let fenceChar = '';
+    let fenceLength = 0;
+
+    // Tag stack for tracking depth
+    const tagStack: TagInfo[] = [];
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        const indent = line.length - line.trimStart().length;
 
-        // Check for code block boundaries
-        const codeMatch = line.match(codeBlockRegex);
-        if (codeMatch) {
-            inCodeBlock = !inCodeBlock;
+        // Check for fenced code block start/end
+        const fenceMatch = line.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
+        if (fenceMatch) {
+            if (!inFencedCodeBlock) {
+                // Starting a code block
+                inFencedCodeBlock = true;
+                fenceChar = fenceMatch[2][0];
+                fenceLength = fenceMatch[2].length;
+                output.push(line);
+                continue;
+            } else {
+                // Check if this closes the code block
+                const closingMatch = line.match(new RegExp(`^\\s*${fenceChar}{${fenceLength},}\\s*$`));
+                if (closingMatch) {
+                    inFencedCodeBlock = false;
+                    output.push(line);
+                    continue;
+                }
+            }
+        }
+
+        // Inside code block - pass through unchanged
+        if (inFencedCodeBlock) {
+            output.push(line);
             continue;
         }
 
-        // Skip processing if inside code block
-        if (inCodeBlock) {
-            continue;
-        }
-
-        // Check for horizontal rules
-        if (horizontalRuleRegex.test(line)) {
-            horizontalRules.push(i);
-            continue;
-        }
-
-        // Check for markdown headers
-        const headerMatch = line.match(headerRegex);
-        if (headerMatch) {
-            headers.push({
-                level: headerMatch[1].length,
-                line: i,
-                text: headerMatch[2]
-            });
-        }
-
-        // Mask code content before parsing XML tags
-        const { masked, codeBlocks } = maskCodeContent(line);
-
-        // Parse XML tags from masked content
-        const xmlOpeningTagRegex = /<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?\s*>/g;
-        const xmlClosingTagRegex = /<\/([a-zA-Z_][a-zA-Z0-9_-]*)>/g;
-        const xmlSelfClosingRegex = /<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?\s*\/>/g;
-
-        let match;
-
-        // Parse self-closing tags
-        while ((match = xmlSelfClosingRegex.exec(masked)) !== null) {
-            const attributes = parseAttributes(match[2] || '');
-            xmlTags.push({
-                name: match[1],
-                line: i,
-                indent,
-                isOpening: false,
-                isClosing: false,
-                isSelfClosing: true,
-                attributes,
-                startIndex: match.index,
-                endIndex: match.index + match[0].length
-            });
-        }
-
-        // Parse closing tags
-        while ((match = xmlClosingTagRegex.exec(masked)) !== null) {
-            xmlTags.push({
-                name: match[1],
-                line: i,
-                indent,
-                isOpening: false,
-                isClosing: true,
-                isSelfClosing: false,
-                attributes: new Map(),
-                startIndex: match.index,
-                endIndex: match.index + match[0].length
-            });
-        }
-
-        // Parse opening tags (exclude self-closing)
-        const maskedWithoutSelfClosing = masked.replace(xmlSelfClosingRegex, (m) => ' '.repeat(m.length));
-        while ((match = xmlOpeningTagRegex.exec(maskedWithoutSelfClosing)) !== null) {
-            const attributes = parseAttributes(match[2] || '');
-            xmlTags.push({
-                name: match[1],
-                line: i,
-                indent,
-                isOpening: true,
-                isClosing: false,
-                isSelfClosing: false,
-                attributes,
-                startIndex: match.index,
-                endIndex: match.index + match[0].length
-            });
+        // Process line outside of code blocks
+        const processedLine = processLine(line, tagStack);
+        if (processedLine !== null) {
+            output.push(processedLine);
         }
     }
 
-    return { xmlTags, headers, horizontalRules };
+    return output.join('\n');
 }
 
-function parseAttributes(attrString: string): Map<string, string> {
-    const attributes = new Map<string, string>();
-    const attrRegex = /([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
-    let match;
-    while ((match = attrRegex.exec(attrString)) !== null) {
-        attributes.set(match[1], match[2] || match[3] || match[4] || '');
+function processLine(line: string, tagStack: TagInfo[]): string | null {
+    const trimmed = line.trim();
+
+    // Empty line
+    if (trimmed === '') {
+        return '';
     }
-    return attributes;
+
+    // Check for standalone closing tag (entire line is just a closing tag)
+    const standaloneClosingMatch = trimmed.match(/^<\/([a-zA-Z_][a-zA-Z0-9_-]*)>\s*$/);
+    if (standaloneClosingMatch) {
+        // Pop from tag stack
+        const tagName = standaloneClosingMatch[1];
+        for (let i = tagStack.length - 1; i >= 0; i--) {
+            if (tagStack[i].name === tagName) {
+                tagStack.splice(i, 1);
+                break;
+            }
+        }
+        return ''; // Replace closing tag line with empty line
+    }
+
+    // Check for standalone opening tag (entire line is just an opening tag)
+    const standaloneOpeningMatch = trimmed.match(/^<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?>$/);
+    if (standaloneOpeningMatch) {
+        const tagName = standaloneOpeningMatch[1];
+        const attributes = standaloneOpeningMatch[2] ? standaloneOpeningMatch[2].trim() : '';
+        const depth = tagStack.length;
+
+        tagStack.push({ name: tagName, attributes, depth });
+
+        // Convert to header (depth 0 = ##, depth 1 = ###, etc.)
+        const headerLevel = Math.min(depth + 2, 6);
+        const headerPrefix = '#'.repeat(headerLevel);
+        const escapedName = escapeMarkdownInHeader(tagName);
+        const attrStr = attributes ? ` (${escapeMarkdownInHeader(attributes)})` : '';
+
+        return `${headerPrefix} ${escapedName}${attrStr}\n`;
+    }
+
+    // Check for opening tag with content on same line (inline tag)
+    // Pattern: <tag>content</tag> or <tag attr="val">content</tag>
+    const inlineTagMatch = trimmed.match(/^<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?>(.+)<\/\1>$/);
+    if (inlineTagMatch) {
+        const tagName = inlineTagMatch[1];
+        const attributes = inlineTagMatch[2] ? inlineTagMatch[2].trim() : '';
+        const content = inlineTagMatch[3].trim();
+        const depth = tagStack.length;
+
+        const headerLevel = Math.min(depth + 2, 6);
+        const headerPrefix = '#'.repeat(headerLevel);
+        const escapedName = escapeMarkdownInHeader(tagName);
+        const attrStr = attributes ? ` (${escapeMarkdownInHeader(attributes)})` : '';
+
+        // Return header followed by content
+        return `${headerPrefix} ${escapedName}${attrStr}\n\n${content}\n`;
+    }
+
+    // Check for opening tag at start of line with content following
+    const openingWithContentMatch = trimmed.match(/^<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?>(.+)$/);
+    if (openingWithContentMatch && !openingWithContentMatch[3].includes('</')) {
+        const tagName = openingWithContentMatch[1];
+        const attributes = openingWithContentMatch[2] ? openingWithContentMatch[2].trim() : '';
+        const content = openingWithContentMatch[3].trim();
+        const depth = tagStack.length;
+
+        tagStack.push({ name: tagName, attributes, depth });
+
+        const headerLevel = Math.min(depth + 2, 6);
+        const headerPrefix = '#'.repeat(headerLevel);
+        const escapedName = escapeMarkdownInHeader(tagName);
+        const attrStr = attributes ? ` (${escapeMarkdownInHeader(attributes)})` : '';
+
+        if (content) {
+            return `${headerPrefix} ${escapedName}${attrStr}\n\n${content}`;
+        }
+        return `${headerPrefix} ${escapedName}${attrStr}\n`;
+    }
+
+    // Regular content line - preserve inline code, remove stray tags
+    return processContentLine(line);
 }
 
-function parseDocument(document: vscode.TextDocument): DocumentStructure {
-    return parseDocumentText(document.getText());
+function processContentLine(line: string): string {
+    // Preserve inline code by replacing temporarily
+    const codeSegments: string[] = [];
+    let processed = line;
+
+    // Replace inline code with placeholders
+    processed = processed.replace(/`[^`]+`/g, (match) => {
+        const index = codeSegments.length;
+        codeSegments.push(match);
+        return `\x00CODE${index}\x00`;
+    });
+
+    // Remove any remaining XML tags from non-code content
+    processed = processed.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_-]*(\s+[^>]*)?>/g, '');
+
+    // Restore inline code
+    processed = processed.replace(/\x00CODE(\d+)\x00/g, (_, index) => codeSegments[parseInt(index)]);
+
+    return processed;
+}
+
+function escapeMarkdownInHeader(text: string): string {
+    // Escape underscores to prevent italic interpretation
+    return text.replace(/_/g, '\\_');
 }
 
 // FOLDING PROVIDER
@@ -191,72 +183,73 @@ class ClaudeMdFoldingRangeProvider implements vscode.FoldingRangeProvider {
         _token: vscode.CancellationToken
     ): vscode.FoldingRange[] {
         const ranges: vscode.FoldingRange[] = [];
-        const structure = parseDocument(document);
+        const text = document.getText();
+        const lines = text.split(/\r?\n/);
 
-        // Create folding ranges for XML tags
+        // Track tag positions for folding
         const tagStack: { name: string; line: number }[] = [];
+        let inCodeBlock = false;
 
-        for (const tag of structure.xmlTags) {
-            if (tag.isOpening) {
-                tagStack.push({ name: tag.name, line: tag.line });
-            } else if (tag.isClosing) {
-                for (let i = tagStack.length - 1; i >= 0; i--) {
-                    if (tagStack[i].name === tag.name) {
-                        const startLine = tagStack[i].line;
-                        const endLine = tag.line;
-                        if (endLine > startLine) {
-                            ranges.push(new vscode.FoldingRange(startLine, endLine, vscode.FoldingRangeKind.Region));
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Track code blocks
+            if (/^(\s*)(`{3,}|~{3,})/.test(line)) {
+                if (!inCodeBlock) {
+                    inCodeBlock = true;
+                    const startLine = i;
+                    // Find end of code block
+                    for (let j = i + 1; j < lines.length; j++) {
+                        if (/^(\s*)(`{3,}|~{3,})\s*$/.test(lines[j])) {
+                            ranges.push(new vscode.FoldingRange(startLine, j, vscode.FoldingRangeKind.Region));
+                            i = j;
+                            inCodeBlock = false;
+                            break;
                         }
-                        tagStack.splice(i, 1);
+                    }
+                }
+                continue;
+            }
+
+            if (inCodeBlock) continue;
+
+            // Check for opening tags
+            const openMatch = line.match(/<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?>(?!.*<\/\1>)/);
+            if (openMatch) {
+                tagStack.push({ name: openMatch[1], line: i });
+            }
+
+            // Check for closing tags
+            const closeMatch = line.match(/<\/([a-zA-Z_][a-zA-Z0-9_-]*)>/);
+            if (closeMatch) {
+                for (let j = tagStack.length - 1; j >= 0; j--) {
+                    if (tagStack[j].name === closeMatch[1]) {
+                        const startLine = tagStack[j].line;
+                        if (i > startLine) {
+                            ranges.push(new vscode.FoldingRange(startLine, i, vscode.FoldingRangeKind.Region));
+                        }
+                        tagStack.splice(j, 1);
                         break;
                     }
                 }
             }
-        }
 
-        // Create folding ranges for markdown headers
-        const headerStack: { level: number; line: number }[] = [];
-        const sortedHeaders = [...structure.headers].sort((a, b) => a.line - b.line);
-
-        for (let i = 0; i < sortedHeaders.length; i++) {
-            const current = sortedHeaders[i];
-            const next = sortedHeaders[i + 1];
-
-            while (headerStack.length > 0 && headerStack[headerStack.length - 1].level >= current.level) {
-                const popped = headerStack.pop()!;
-                const endLine = current.line - 1;
-                if (endLine > popped.line) {
-                    ranges.push(new vscode.FoldingRange(popped.line, endLine, vscode.FoldingRangeKind.Region));
-                }
-            }
-
-            headerStack.push({ level: current.level, line: current.line });
-
-            if (!next) {
-                while (headerStack.length > 0) {
-                    const popped = headerStack.pop()!;
-                    const endLine = document.lineCount - 1;
-                    if (endLine > popped.line) {
-                        ranges.push(new vscode.FoldingRange(popped.line, endLine, vscode.FoldingRangeKind.Region));
+            // Check for markdown headers
+            const headerMatch = line.match(/^(#{1,6})\s+/);
+            if (headerMatch) {
+                const level = headerMatch[1].length;
+                // Find end of this header section
+                for (let j = i + 1; j < lines.length; j++) {
+                    const nextHeaderMatch = lines[j].match(/^(#{1,6})\s+/);
+                    if (nextHeaderMatch && nextHeaderMatch[1].length <= level) {
+                        if (j - 1 > i) {
+                            ranges.push(new vscode.FoldingRange(i, j - 1, vscode.FoldingRangeKind.Region));
+                        }
+                        break;
                     }
-                }
-            }
-        }
-
-        // Create folding ranges for fenced code blocks
-        let codeBlockStart: number | null = null;
-        const codeBlockRegex = /^(\s*)(`{3,}|~{3,})/;
-
-        for (let i = 0; i < document.lineCount; i++) {
-            const line = document.lineAt(i).text;
-            if (codeBlockRegex.test(line)) {
-                if (codeBlockStart === null) {
-                    codeBlockStart = i;
-                } else {
-                    if (i > codeBlockStart) {
-                        ranges.push(new vscode.FoldingRange(codeBlockStart, i, vscode.FoldingRangeKind.Region));
+                    if (j === lines.length - 1 && j > i) {
+                        ranges.push(new vscode.FoldingRange(i, j, vscode.FoldingRangeKind.Region));
                     }
-                    codeBlockStart = null;
                 }
             }
         }
@@ -265,146 +258,10 @@ class ClaudeMdFoldingRangeProvider implements vscode.FoldingRangeProvider {
     }
 }
 
-// PREVIEW FUNCTIONALITY
+// PREVIEW
 
-/**
- * Escape underscores in text to prevent markdown italic interpretation
- */
-function escapeUnderscores(text: string): string {
-    // Don't escape underscores that are already in code blocks or inline code
-    return text.replace(/(?<!`)_(?!`)/g, '\\_');
-}
-
-/**
- * Convert ClaudeMD to standard Markdown
- */
-function convertToMarkdown(text: string): string {
-    const lines = text.split(/\r?\n/);
-    const result: string[] = [];
-
-    // Track code blocks
-    let inCodeBlock = false;
-    const codeBlockRegex = /^(\s*)(`{3,}|~{3,})(.*)$/;
-
-    // Build tag depth tracking
-    const structure = parseDocumentText(text);
-    const tagDepthMap = new Map<number, number>();
-    const tagInfoMap = new Map<number, { name: string; attributes: Map<string, string> }>();
-    const tagEndLines = new Set<number>();
-
-    // Track horizontal rules for section resets
-    const hrLines = new Set(structure.horizontalRules);
-
-    let currentDepth = 0;
-    const tagStack: { name: string; line: number }[] = [];
-
-    for (const tag of structure.xmlTags) {
-        // Reset at horizontal rules
-        for (const hrLine of hrLines) {
-            if (hrLine < tag.line && (tagStack.length === 0 || hrLine > tagStack[tagStack.length - 1].line)) {
-                currentDepth = 0;
-                tagStack.length = 0;
-            }
-        }
-
-        if (tag.isOpening) {
-            tagDepthMap.set(tag.line, currentDepth);
-            tagInfoMap.set(tag.line, { name: tag.name, attributes: tag.attributes });
-            tagStack.push({ name: tag.name, line: tag.line });
-            currentDepth++;
-        } else if (tag.isClosing) {
-            tagEndLines.add(tag.line);
-            for (let i = tagStack.length - 1; i >= 0; i--) {
-                if (tagStack[i].name === tag.name) {
-                    tagStack.splice(i, 1);
-                    currentDepth = Math.max(0, currentDepth - 1);
-                    break;
-                }
-            }
-        } else if (tag.isSelfClosing) {
-            tagDepthMap.set(tag.line, currentDepth);
-            tagInfoMap.set(tag.line, { name: tag.name, attributes: tag.attributes });
-        }
-    }
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-
-        // Handle code blocks - pass through unchanged
-        const codeMatch = line.match(codeBlockRegex);
-        if (codeMatch) {
-            inCodeBlock = !inCodeBlock;
-            result.push(line);
-            continue;
-        }
-
-        if (inCodeBlock) {
-            result.push(line);
-            continue;
-        }
-
-        // Skip closing tag lines (they become end of section)
-        if (tagEndLines.has(i)) {
-            // Add blank line after section ends
-            result.push('');
-            continue;
-        }
-
-        // Check if this line starts with an opening tag
-        if (tagDepthMap.has(i)) {
-            const depth = tagDepthMap.get(i)!;
-            const tagInfo = tagInfoMap.get(i)!;
-
-            // Convert depth to header level (depth 0 = H2, depth 1 = H3, etc.)
-            // H1 is reserved for the document title
-            const headerLevel = Math.min(depth + 2, 6);
-            const headerPrefix = '#'.repeat(headerLevel);
-
-            // Format tag name - escape underscores for markdown
-            const escapedName = tagInfo.name.replace(/_/g, '\\_');
-
-            // Format attributes
-            let attrString = '';
-            if (tagInfo.attributes.size > 0) {
-                const attrs: string[] = [];
-                tagInfo.attributes.forEach((value, key) => {
-                    const escapedKey = key.replace(/_/g, '\\_');
-                    attrs.push(`${escapedKey}="${value}"`);
-                });
-                attrString = ` (${attrs.join(', ')})`;
-            }
-
-            result.push(`${headerPrefix} ${escapedName}${attrString}`);
-            result.push('');
-
-            // Check if there's content after the tag on the same line
-            const tagPattern = new RegExp(`<${tagInfo.name}(?:\\s+[^>]*)?>\\s*(.*)$`);
-            const contentMatch = line.match(tagPattern);
-            if (contentMatch && contentMatch[1].trim()) {
-                result.push(contentMatch[1].trim());
-            }
-        } else {
-            // Regular content line - remove any stray tags but preserve code
-            const { masked, codeBlocks } = maskCodeContent(line);
-
-            // Remove XML tags from non-code content
-            let processed = masked.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_-]*(?:\s+[^>]*)?>/g, '');
-
-            // Restore code blocks
-            processed = unmaskCodeContent(processed, codeBlocks);
-
-            // Only add non-empty lines or preserve intentional blank lines
-            if (processed.trim() || line.trim() === '') {
-                result.push(processed);
-            }
-        }
-    }
-
-    return result.join('\n');
-}
-
-let previewPanel: vscode.WebviewPanel | undefined;
 let tempFilePath: string | undefined;
+let documentChangeListener: vscode.Disposable | undefined;
 
 async function showPreview(context: vscode.ExtensionContext) {
     const editor = vscode.window.activeTextEditor;
@@ -414,208 +271,171 @@ async function showPreview(context: vscode.ExtensionContext) {
     }
 
     const document = editor.document;
-    const markdownContent = convertToMarkdown(document.getText());
+    const markdownContent = convertClaudeMdToMarkdown(document.getText());
 
-    // Create temp file for preview
+    // Create temp file
     const tempDir = os.tmpdir();
     const originalName = path.basename(document.fileName, '.md');
     tempFilePath = path.join(tempDir, `${originalName}_preview.md`);
 
-    // Write converted content to temp file
     fs.writeFileSync(tempFilePath, markdownContent, 'utf-8');
 
-    // Open the temp file and show markdown preview
     const tempUri = vscode.Uri.file(tempFilePath);
-    const tempDoc = await vscode.workspace.openTextDocument(tempUri);
-    await vscode.window.showTextDocument(tempDoc, vscode.ViewColumn.Beside, true);
 
-    // Trigger VSCode's built-in markdown preview
+    // Open preview using VSCode's built-in markdown preview
     await vscode.commands.executeCommand('markdown.showPreviewToSide', tempUri);
 
-    // Close the temp document (keep preview open)
-    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    // Clean up previous listener
+    if (documentChangeListener) {
+        documentChangeListener.dispose();
+    }
 
-    // Set up listener to update preview when original document changes
-    const changeListener = vscode.workspace.onDidChangeTextDocument(async event => {
+    // Update preview when document changes
+    documentChangeListener = vscode.workspace.onDidChangeTextDocument(event => {
         if (event.document === document && tempFilePath) {
-            const updatedContent = convertToMarkdown(event.document.getText());
+            const updatedContent = convertClaudeMdToMarkdown(event.document.getText());
             fs.writeFileSync(tempFilePath, updatedContent, 'utf-8');
-            // The markdown preview should auto-refresh
         }
     });
 
-    context.subscriptions.push(changeListener);
+    context.subscriptions.push(documentChangeListener);
 }
 
-// BEAUTIFY FUNCTIONALITY
+// BEAUTIFY
 
 function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
-    const edits: vscode.TextEdit[] = [];
     const lines = document.getText().split(/\r?\n/);
     const result: string[] = [];
-
-    const indentString = '  '; // 2 spaces
-    let currentIndent = 0;
+    const indent = '  ';
+    let depth = 0;
     let inCodeBlock = false;
 
-    const codeBlockRegex = /^(\s*)(`{3,}|~{3,})/;
-    const openingTagRegex = /^(\s*)<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?>(\s*)$/;
-    const closingTagRegex = /^(\s*)<\/([a-zA-Z_][a-zA-Z0-9_-]*)>(\s*)$/;
-    const selfClosingTagRegex = /^(\s*)<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?\/>\s*$/;
-    const headerRegex = /^(\s*)(#{1,6}\s+.*)$/;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-
-        // Handle code blocks - preserve as-is
-        const codeMatch = line.match(codeBlockRegex);
-        if (codeMatch) {
-            inCodeBlock = !inCodeBlock;
-            result.push(indentString.repeat(currentIndent) + line.trim());
+    for (const line of lines) {
+        // Handle code blocks
+        if (/^(\s*)(`{3,}|~{3,})/.test(line)) {
+            if (!inCodeBlock) {
+                result.push(indent.repeat(depth) + line.trim());
+                inCodeBlock = true;
+            } else {
+                result.push(indent.repeat(depth) + line.trim());
+                inCodeBlock = false;
+            }
             continue;
         }
 
         if (inCodeBlock) {
-            result.push(line); // Preserve code block content exactly
+            result.push(line); // Preserve exactly
             continue;
         }
 
-        // Handle closing tags - decrease indent first
-        const closingMatch = line.match(closingTagRegex);
-        if (closingMatch) {
-            currentIndent = Math.max(0, currentIndent - 1);
-            result.push(indentString.repeat(currentIndent) + line.trim());
-            continue;
-        }
+        const trimmed = line.trim();
 
-        // Handle self-closing tags
-        const selfClosingMatch = line.match(selfClosingTagRegex);
-        if (selfClosingMatch) {
-            result.push(indentString.repeat(currentIndent) + line.trim());
-            continue;
-        }
-
-        // Handle opening tags - add line, then increase indent
-        const openingMatch = line.match(openingTagRegex);
-        if (openingMatch) {
-            result.push(indentString.repeat(currentIndent) + line.trim());
-            currentIndent++;
-            continue;
-        }
-
-        // Handle headers - no indent
-        const headerMatch = line.match(headerRegex);
-        if (headerMatch) {
-            result.push(line.trim());
-            continue;
-        }
-
-        // Handle empty lines
-        if (line.trim() === '') {
+        // Empty line
+        if (trimmed === '') {
             result.push('');
             continue;
         }
 
-        // Handle all other content - apply current indent
-        result.push(indentString.repeat(currentIndent) + line.trim());
+        // Closing tag - decrease depth first
+        if (/^<\/[a-zA-Z_][a-zA-Z0-9_-]*>\s*$/.test(trimmed)) {
+            depth = Math.max(0, depth - 1);
+            result.push(indent.repeat(depth) + trimmed);
+            continue;
+        }
+
+        // Opening tag only (no content, no closing on same line)
+        if (/^<[a-zA-Z_][a-zA-Z0-9_-]*(\s+[^>]*)?>$/.test(trimmed)) {
+            result.push(indent.repeat(depth) + trimmed);
+            depth++;
+            continue;
+        }
+
+        // Header - no indent
+        if (/^#{1,6}\s+/.test(trimmed)) {
+            result.push(trimmed);
+            continue;
+        }
+
+        // Regular content
+        result.push(indent.repeat(depth) + trimmed);
     }
 
     const fullRange = new vscode.Range(
         document.positionAt(0),
         document.positionAt(document.getText().length)
     );
-    edits.push(vscode.TextEdit.replace(fullRange, result.join('\n')));
 
-    return edits;
+    return [vscode.TextEdit.replace(fullRange, result.join('\n'))];
 }
 
-// EXTENSION ACTIVATION
+// ACTIVATION
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('ClaudeMD extension is now active');
+    console.log('ClaudeMD extension activated');
 
-    // Register folding range provider
-    const foldingProvider = vscode.languages.registerFoldingRangeProvider(
-        { language: 'claudemd', scheme: 'file' },
-        new ClaudeMdFoldingRangeProvider()
+    // Folding provider for claudemd language
+    context.subscriptions.push(
+        vscode.languages.registerFoldingRangeProvider(
+            { language: 'claudemd', scheme: 'file' },
+            new ClaudeMdFoldingRangeProvider()
+        )
     );
-    context.subscriptions.push(foldingProvider);
 
-    // Also register for markdown files named CLAUDE.md or AGENT.md
-    const foldingProviderMd = vscode.languages.registerFoldingRangeProvider(
-        { language: 'markdown', pattern: '**/{CLAUDE,AGENT}.md' },
-        new ClaudeMdFoldingRangeProvider()
+    // Folding provider for CLAUDE.md/AGENT.md files in markdown mode
+    context.subscriptions.push(
+        vscode.languages.registerFoldingRangeProvider(
+            { language: 'markdown', pattern: '**/{CLAUDE,AGENT}.md' },
+            new ClaudeMdFoldingRangeProvider()
+        )
     );
-    context.subscriptions.push(foldingProviderMd);
 
-    // Register beautify command
-    const beautifyCommand = vscode.commands.registerCommand('claudemd.beautify', () => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            vscode.window.showErrorMessage('No active editor found');
-            return;
-        }
-
-        const document = editor.document;
-        const edits = beautifyDocument(document);
-
-        const workspaceEdit = new vscode.WorkspaceEdit();
-        for (const edit of edits) {
-            workspaceEdit.replace(document.uri, edit.range, edit.newText);
-        }
-
-        vscode.workspace.applyEdit(workspaceEdit).then(success => {
-            if (success) {
-                vscode.window.showInformationMessage('Document beautified successfully');
-            } else {
-                vscode.window.showErrorMessage('Failed to beautify document');
+    // Beautify command
+    context.subscriptions.push(
+        vscode.commands.registerCommand('claudemd.beautify', () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showErrorMessage('No active editor');
+                return;
             }
-        });
-    });
-    context.subscriptions.push(beautifyCommand);
 
-    // Register preview command
-    const previewCommand = vscode.commands.registerCommand('claudemd.preview', () => {
-        showPreview(context);
-    });
-    context.subscriptions.push(previewCommand);
+            const edits = beautifyDocument(editor.document);
+            const workspaceEdit = new vscode.WorkspaceEdit();
+            edits.forEach(edit => workspaceEdit.replace(editor.document.uri, edit.range, edit.newText));
 
-    // Register folding range command
-    const foldingCommand = vscode.commands.registerCommand('claudemd.folding_range', () => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            vscode.window.showErrorMessage('No active editor found');
-            return;
-        }
-
-        vscode.commands.executeCommand('editor.foldAll').then(() => {
-            vscode.window.showInformationMessage('Folding ranges created');
-        });
-    });
-    context.subscriptions.push(foldingCommand);
-
-    // Register document formatting provider
-    const formattingProvider = vscode.languages.registerDocumentFormattingEditProvider(
-        { language: 'claudemd', scheme: 'file' },
-        {
-            provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.TextEdit[] {
-                return beautifyDocument(document);
-            }
-        }
+            vscode.workspace.applyEdit(workspaceEdit).then(success => {
+                if (success) {
+                    vscode.window.showInformationMessage('Document beautified');
+                }
+            });
+        })
     );
-    context.subscriptions.push(formattingProvider);
+
+    // Preview command
+    context.subscriptions.push(
+        vscode.commands.registerCommand('claudemd.preview', () => showPreview(context))
+    );
+
+    // Fold all command
+    context.subscriptions.push(
+        vscode.commands.registerCommand('claudemd.folding_range', () => {
+            vscode.commands.executeCommand('editor.foldAll');
+        })
+    );
+
+    // Document formatting provider
+    context.subscriptions.push(
+        vscode.languages.registerDocumentFormattingEditProvider(
+            { language: 'claudemd', scheme: 'file' },
+            { provideDocumentFormattingEdits: beautifyDocument }
+        )
+    );
 }
 
 export function deactivate() {
-    // Clean up temp file
     if (tempFilePath && fs.existsSync(tempFilePath)) {
-        try {
-            fs.unlinkSync(tempFilePath);
-        } catch (e) {
-            // Ignore cleanup errors
-        }
+        try { fs.unlinkSync(tempFilePath); } catch {}
     }
-    if (previewPanel) {
-        previewPanel.dispose();
+    if (documentChangeListener) {
+        documentChangeListener.dispose();
     }
 }
