@@ -109,18 +109,26 @@
     "list": {
       "patterns": [
         {
-          "match": "^\\s*([-*+])\\s+",
-          "captures": {
-            "1": { "name": "punctuation.definition.list.begin.claudemd" }
+          "begin": "^\\s*([-*+])\\s+",
+          "end": "$",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.list.begin.markdown" }
           },
-          "name": "markup.list.unnumbered.claudemd"
+          "name": "markup.list.unnumbered.markdown",
+          "patterns": [
+            { "include": "#inline" }
+          ]
         },
         {
-          "match": "^\\s*(\\d+\\.)\\s+",
-          "captures": {
-            "1": { "name": "punctuation.definition.list.begin.claudemd" }
+          "begin": "^\\s*(\\d+\\.)\\s+",
+          "end": "$",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.list.begin.markdown" }
           },
-          "name": "markup.list.numbered.claudemd"
+          "name": "markup.list.numbered.markdown",
+          "patterns": [
+            { "include": "#inline" }
+          ]
         }
       ]
     },
@@ -203,6 +211,7 @@
         { "include": "#strikethrough" },
         { "include": "#link" },
         { "include": "#image" },
+        { "include": "#quoted-string" },
         { "include": "#xml-tag" }
       ]
     },
@@ -292,6 +301,23 @@
         "3": { "name": "markup.underline.link.image.markdown" }
       },
       "name": "meta.image.inline.markdown"
+    },
+    "quoted-string": {
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.markdown" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.markdown" }
+      },
+      "name": "string.quoted.double.markdown",
+      "patterns": [
+        { "include": "#raw" },
+        { "include": "#bold" },
+        { "include": "#italic" },
+        { "include": "#escape" }
+      ]
     }
   }
 }
