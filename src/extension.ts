@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 
-// ============================================================================
 // TYPES AND INTERFACES
-// ============================================================================
 
 interface XmlTag {
     name: string;
@@ -12,6 +13,8 @@ interface XmlTag {
     isClosing: boolean;
     isSelfClosing: boolean;
     attributes: Map<string, string>;
+    startIndex: number;
+    endIndex: number;
 }
 
 interface MarkdownHeader {
@@ -26,33 +29,57 @@ interface DocumentStructure {
     horizontalRules: number[];
 }
 
-// ============================================================================
 // PARSING UTILITIES
-// ============================================================================
 
-function parseDocument(document: vscode.TextDocument): DocumentStructure {
+/**
+ * Remove content inside backticks to avoid parsing XML-like content within code
+ */
+function maskCodeContent(text: string): { masked: string; codeBlocks: string[] } {
+    const codeBlocks: string[] = [];
+
+    // Mask inline code (backticks) - handle multiple backticks first
+    let masked = text.replace(/(`{2,})([^`]+?)\1/g, (match) => {
+        const index = codeBlocks.length;
+        codeBlocks.push(match);
+        return `\x00CODE${index}\x00`;
+    });
+
+    // Mask single backtick inline code
+    masked = masked.replace(/`([^`]+)`/g, (match) => {
+        const index = codeBlocks.length;
+        codeBlocks.push(match);
+        return `\x00CODE${index}\x00`;
+    });
+
+    return { masked, codeBlocks };
+}
+
+/**
+ * Restore masked code content
+ */
+function unmaskCodeContent(text: string, codeBlocks: string[]): string {
+    return text.replace(/\x00CODE(\d+)\x00/g, (_, index) => codeBlocks[parseInt(index)]);
+}
+
+function parseDocumentText(text: string): DocumentStructure {
     const xmlTags: XmlTag[] = [];
     const headers: MarkdownHeader[] = [];
     const horizontalRules: number[] = [];
 
-    const xmlOpeningTagRegex = /<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?\s*>/g;
-    const xmlClosingTagRegex = /<\/([a-zA-Z_][a-zA-Z0-9_-]*)>/g;
-    const xmlSelfClosingRegex = /<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?\s*\/>/g;
-    const headerRegex = /^(#{1,6})\s+(.+?)\s*$/;
-    const horizontalRuleRegex = /^\s*([-*_]){3,}\s*$/;
-    const attributeRegex = /([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+    const lines = text.split(/\r?\n/);
 
     // Track if we're inside a fenced code block
     let inCodeBlock = false;
     const codeBlockRegex = /^(\s*)(`{3,}|~{3,})/;
+    const headerRegex = /^(#{1,6})\s+(.+?)\s*$/;
+    const horizontalRuleRegex = /^\s*([-*_]){3,}\s*$/;
 
-    for (let i = 0; i < document.lineCount; i++) {
-        const line = document.lineAt(i);
-        const text = line.text;
-        const indent = text.length - text.trimStart().length;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const indent = line.length - line.trimStart().length;
 
         // Check for code block boundaries
-        const codeMatch = text.match(codeBlockRegex);
+        const codeMatch = line.match(codeBlockRegex);
         if (codeMatch) {
             inCodeBlock = !inCodeBlock;
             continue;
@@ -64,13 +91,13 @@ function parseDocument(document: vscode.TextDocument): DocumentStructure {
         }
 
         // Check for horizontal rules
-        if (horizontalRuleRegex.test(text)) {
+        if (horizontalRuleRegex.test(line)) {
             horizontalRules.push(i);
             continue;
         }
 
         // Check for markdown headers
-        const headerMatch = text.match(headerRegex);
+        const headerMatch = line.match(headerRegex);
         if (headerMatch) {
             headers.push({
                 level: headerMatch[1].length,
@@ -79,16 +106,19 @@ function parseDocument(document: vscode.TextDocument): DocumentStructure {
             });
         }
 
-        // Parse XML tags - self-closing first
+        // Mask code content before parsing XML tags
+        const { masked, codeBlocks } = maskCodeContent(line);
+
+        // Parse XML tags from masked content
+        const xmlOpeningTagRegex = /<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?\s*>/g;
+        const xmlClosingTagRegex = /<\/([a-zA-Z_][a-zA-Z0-9_-]*)>/g;
+        const xmlSelfClosingRegex = /<([a-zA-Z_][a-zA-Z0-9_-]*)(\s+[^>]*)?\s*\/>/g;
+
         let match;
-        while ((match = xmlSelfClosingRegex.exec(text)) !== null) {
-            const attributes = new Map<string, string>();
-            if (match[2]) {
-                let attrMatch;
-                while ((attrMatch = attributeRegex.exec(match[2])) !== null) {
-                    attributes.set(attrMatch[1], attrMatch[2] || attrMatch[3] || attrMatch[4] || '');
-                }
-            }
+
+        // Parse self-closing tags
+        while ((match = xmlSelfClosingRegex.exec(masked)) !== null) {
+            const attributes = parseAttributes(match[2] || '');
             xmlTags.push({
                 name: match[1],
                 line: i,
@@ -96,12 +126,14 @@ function parseDocument(document: vscode.TextDocument): DocumentStructure {
                 isOpening: false,
                 isClosing: false,
                 isSelfClosing: true,
-                attributes
+                attributes,
+                startIndex: match.index,
+                endIndex: match.index + match[0].length
             });
         }
 
         // Parse closing tags
-        while ((match = xmlClosingTagRegex.exec(text)) !== null) {
+        while ((match = xmlClosingTagRegex.exec(masked)) !== null) {
             xmlTags.push({
                 name: match[1],
                 line: i,
@@ -109,21 +141,16 @@ function parseDocument(document: vscode.TextDocument): DocumentStructure {
                 isOpening: false,
                 isClosing: true,
                 isSelfClosing: false,
-                attributes: new Map()
+                attributes: new Map(),
+                startIndex: match.index,
+                endIndex: match.index + match[0].length
             });
         }
 
         // Parse opening tags (exclude self-closing)
-        const textWithoutSelfClosing = text.replace(xmlSelfClosingRegex, '');
-        while ((match = xmlOpeningTagRegex.exec(textWithoutSelfClosing)) !== null) {
-            const attributes = new Map<string, string>();
-            if (match[2]) {
-                let attrMatch;
-                const attrRegex = /([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
-                while ((attrMatch = attrRegex.exec(match[2])) !== null) {
-                    attributes.set(attrMatch[1], attrMatch[2] || attrMatch[3] || attrMatch[4] || '');
-                }
-            }
+        const maskedWithoutSelfClosing = masked.replace(xmlSelfClosingRegex, (m) => ' '.repeat(m.length));
+        while ((match = xmlOpeningTagRegex.exec(maskedWithoutSelfClosing)) !== null) {
+            const attributes = parseAttributes(match[2] || '');
             xmlTags.push({
                 name: match[1],
                 line: i,
@@ -131,7 +158,9 @@ function parseDocument(document: vscode.TextDocument): DocumentStructure {
                 isOpening: true,
                 isClosing: false,
                 isSelfClosing: false,
-                attributes
+                attributes,
+                startIndex: match.index,
+                endIndex: match.index + match[0].length
             });
         }
     }
@@ -139,9 +168,21 @@ function parseDocument(document: vscode.TextDocument): DocumentStructure {
     return { xmlTags, headers, horizontalRules };
 }
 
-// ============================================================================
+function parseAttributes(attrString: string): Map<string, string> {
+    const attributes = new Map<string, string>();
+    const attrRegex = /([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+    let match;
+    while ((match = attrRegex.exec(attrString)) !== null) {
+        attributes.set(match[1], match[2] || match[3] || match[4] || '');
+    }
+    return attributes;
+}
+
+function parseDocument(document: vscode.TextDocument): DocumentStructure {
+    return parseDocumentText(document.getText());
+}
+
 // FOLDING PROVIDER
-// ============================================================================
 
 class ClaudeMdFoldingRangeProvider implements vscode.FoldingRangeProvider {
     provideFoldingRanges(
@@ -159,7 +200,6 @@ class ClaudeMdFoldingRangeProvider implements vscode.FoldingRangeProvider {
             if (tag.isOpening) {
                 tagStack.push({ name: tag.name, line: tag.line });
             } else if (tag.isClosing) {
-                // Find matching opening tag
                 for (let i = tagStack.length - 1; i >= 0; i--) {
                     if (tagStack[i].name === tag.name) {
                         const startLine = tagStack[i].line;
@@ -182,7 +222,6 @@ class ClaudeMdFoldingRangeProvider implements vscode.FoldingRangeProvider {
             const current = sortedHeaders[i];
             const next = sortedHeaders[i + 1];
 
-            // Close any headers that are same level or higher
             while (headerStack.length > 0 && headerStack[headerStack.length - 1].level >= current.level) {
                 const popped = headerStack.pop()!;
                 const endLine = current.line - 1;
@@ -193,7 +232,6 @@ class ClaudeMdFoldingRangeProvider implements vscode.FoldingRangeProvider {
 
             headerStack.push({ level: current.level, line: current.line });
 
-            // If this is the last header, close it at the end of document
             if (!next) {
                 while (headerStack.length > 0) {
                     const popped = headerStack.pop()!;
@@ -227,48 +265,55 @@ class ClaudeMdFoldingRangeProvider implements vscode.FoldingRangeProvider {
     }
 }
 
-// ============================================================================
 // PREVIEW FUNCTIONALITY
-// ============================================================================
 
-function convertToMarkdown(document: vscode.TextDocument): string {
-    const lines = document.getText().split(/\r?\n/);
+/**
+ * Escape underscores in text to prevent markdown italic interpretation
+ */
+function escapeUnderscores(text: string): string {
+    // Don't escape underscores that are already in code blocks or inline code
+    return text.replace(/(?<!`)_(?!`)/g, '\\_');
+}
+
+/**
+ * Convert ClaudeMD to standard Markdown
+ */
+function convertToMarkdown(text: string): string {
+    const lines = text.split(/\r?\n/);
     const result: string[] = [];
-    const structure = parseDocument(document);
 
-    // Build a map of tag start lines to their nesting depth
+    // Track code blocks
+    let inCodeBlock = false;
+    const codeBlockRegex = /^(\s*)(`{3,}|~{3,})(.*)$/;
+
+    // Build tag depth tracking
+    const structure = parseDocumentText(text);
     const tagDepthMap = new Map<number, number>();
-    const tagNameMap = new Map<number, { name: string; attributes: Map<string, string> }>();
+    const tagInfoMap = new Map<number, { name: string; attributes: Map<string, string> }>();
     const tagEndLines = new Set<number>();
 
-    // Track horizontal rule positions for section resets
+    // Track horizontal rules for section resets
     const hrLines = new Set(structure.horizontalRules);
 
-    // Calculate nesting depth for each opening tag
     let currentDepth = 0;
-    let baseDepth = 0;
     const tagStack: { name: string; line: number }[] = [];
 
     for (const tag of structure.xmlTags) {
-        // Reset depth at horizontal rules
-        if (tag.line > 0) {
-            for (const hrLine of hrLines) {
-                if (hrLine < tag.line && hrLine > (tagStack.length > 0 ? tagStack[tagStack.length - 1].line : 0)) {
-                    currentDepth = 0;
-                    baseDepth = 0;
-                    tagStack.length = 0;
-                }
+        // Reset at horizontal rules
+        for (const hrLine of hrLines) {
+            if (hrLine < tag.line && (tagStack.length === 0 || hrLine > tagStack[tagStack.length - 1].line)) {
+                currentDepth = 0;
+                tagStack.length = 0;
             }
         }
 
         if (tag.isOpening) {
             tagDepthMap.set(tag.line, currentDepth);
-            tagNameMap.set(tag.line, { name: tag.name, attributes: tag.attributes });
+            tagInfoMap.set(tag.line, { name: tag.name, attributes: tag.attributes });
             tagStack.push({ name: tag.name, line: tag.line });
             currentDepth++;
         } else if (tag.isClosing) {
             tagEndLines.add(tag.line);
-            // Find matching opening tag
             for (let i = tagStack.length - 1; i >= 0; i--) {
                 if (tagStack[i].name === tag.name) {
                     tagStack.splice(i, 1);
@@ -278,26 +323,14 @@ function convertToMarkdown(document: vscode.TextDocument): string {
             }
         } else if (tag.isSelfClosing) {
             tagDepthMap.set(tag.line, currentDepth);
-            tagNameMap.set(tag.line, { name: tag.name, attributes: tag.attributes });
+            tagInfoMap.set(tag.line, { name: tag.name, attributes: tag.attributes });
         }
     }
-
-    // Get current markdown header base level
-    let mdHeaderBaseLevel = 0;
-    for (const header of structure.headers) {
-        if (mdHeaderBaseLevel === 0 || header.level < mdHeaderBaseLevel) {
-            mdHeaderBaseLevel = header.level;
-        }
-    }
-
-    // Track if we're in a code block
-    let inCodeBlock = false;
-    const codeBlockRegex = /^(\s*)(`{3,}|~{3,})(\S*)?$/;
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // Handle code blocks
+        // Handle code blocks - pass through unchanged
         const codeMatch = line.match(codeBlockRegex);
         if (codeMatch) {
             inCodeBlock = !inCodeBlock;
@@ -310,55 +343,59 @@ function convertToMarkdown(document: vscode.TextDocument): string {
             continue;
         }
 
-        // Skip closing tag lines
+        // Skip closing tag lines (they become end of section)
         if (tagEndLines.has(i)) {
+            // Add blank line after section ends
+            result.push('');
             continue;
         }
 
-        // Check if this line has an opening tag
+        // Check if this line starts with an opening tag
         if (tagDepthMap.has(i)) {
             const depth = tagDepthMap.get(i)!;
-            const tagInfo = tagNameMap.get(i)!;
+            const tagInfo = tagInfoMap.get(i)!;
 
-            // Calculate header level based on depth (minimum H2 since H1 is for document title)
+            // Convert depth to header level (depth 0 = H2, depth 1 = H3, etc.)
+            // H1 is reserved for the document title
             const headerLevel = Math.min(depth + 2, 6);
             const headerPrefix = '#'.repeat(headerLevel);
+
+            // Format tag name - escape underscores for markdown
+            const escapedName = tagInfo.name.replace(/_/g, '\\_');
 
             // Format attributes
             let attrString = '';
             if (tagInfo.attributes.size > 0) {
                 const attrs: string[] = [];
                 tagInfo.attributes.forEach((value, key) => {
-                    attrs.push(`${key}="${value}"`);
+                    const escapedKey = key.replace(/_/g, '\\_');
+                    attrs.push(`${escapedKey}="${value}"`);
                 });
                 attrString = ` (${attrs.join(', ')})`;
             }
 
-            // Convert tag to header
-            result.push(`${headerPrefix} ${tagInfo.name}${attrString}`);
+            result.push(`${headerPrefix} ${escapedName}${attrString}`);
+            result.push('');
 
             // Check if there's content after the tag on the same line
-            const tagPattern = new RegExp(`<${tagInfo.name}(?:\\s+[^>]*)?>(.*)$`);
+            const tagPattern = new RegExp(`<${tagInfo.name}(?:\\s+[^>]*)?>\\s*(.*)$`);
             const contentMatch = line.match(tagPattern);
             if (contentMatch && contentMatch[1].trim()) {
                 result.push(contentMatch[1].trim());
             }
         } else {
-            // Check if line contains inline XML (tag with content on same line)
-            const inlineTagRegex = /<([a-zA-Z_][a-zA-Z0-9_-]*)(?:\s+[^>]*)?>(.+?)<\/\1>/g;
-            let processedLine = line;
-            let match;
+            // Regular content line - remove any stray tags but preserve code
+            const { masked, codeBlocks } = maskCodeContent(line);
 
-            while ((match = inlineTagRegex.exec(line)) !== null) {
-                // For inline tags, just extract the content
-                processedLine = processedLine.replace(match[0], `**${match[1]}**: ${match[2]}`);
-            }
+            // Remove XML tags from non-code content
+            let processed = masked.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_-]*(?:\s+[^>]*)?>/g, '');
 
-            // Remove standalone opening/closing tags from the line
-            processedLine = processedLine.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_-]*(?:\s+[^>]*)?>/g, '');
+            // Restore code blocks
+            processed = unmaskCodeContent(processed, codeBlocks);
 
-            if (processedLine.trim() || line.trim() === '') {
-                result.push(processedLine);
+            // Only add non-empty lines or preserve intentional blank lines
+            if (processed.trim() || line.trim() === '') {
+                result.push(processed);
             }
         }
     }
@@ -367,139 +404,9 @@ function convertToMarkdown(document: vscode.TextDocument): string {
 }
 
 let previewPanel: vscode.WebviewPanel | undefined;
+let tempFilePath: string | undefined;
 
-function getPreviewHtml(content: string, isDark: boolean): string {
-    const bgColor = isDark ? '#1e1e1e' : '#ffffff';
-    const textColor = isDark ? '#d4d4d4' : '#333333';
-    const headerColor = isDark ? '#569cd6' : '#0066cc';
-    const codeBlockBg = isDark ? '#2d2d2d' : '#f4f4f4';
-    const inlineCodeBg = isDark ? '#3c3c3c' : '#e8e8e8';
-    const borderColor = isDark ? '#404040' : '#dddddd';
-
-    // Simple markdown to HTML conversion
-    let html = content
-        // Escape HTML first
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        // Code blocks (before other processing)
-        .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="code-block"><code class="language-$1">$2</code></pre>')
-        // Inline code
-        .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-        // Headers
-        .replace(/^###### (.+)$/gm, '<h6>$1</h6>')
-        .replace(/^##### (.+)$/gm, '<h5>$1</h5>')
-        .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-        // Bold
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/__(.+?)__/g, '<strong>$1</strong>')
-        // Italic
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-        .replace(/_([^_]+)_/g, '<em>$1</em>')
-        // Strikethrough
-        .replace(/~~(.+?)~~/g, '<del>$1</del>')
-        // Lists
-        .replace(/^[-*+]\s+(.+)$/gm, '<li>$1</li>')
-        .replace(/^(\d+)\.\s+(.+)$/gm, '<li>$2</li>')
-        // Horizontal rules
-        .replace(/^[-*_]{3,}$/gm, '<hr>')
-        // Links
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-        // Paragraphs (wrap remaining lines)
-        .replace(/^(?!<[hloupa]|<li|<hr|<pre|<code)(.+)$/gm, '<p>$1</p>')
-        // Wrap consecutive li elements in ul
-        .replace(/(<li>[\s\S]*?<\/li>)+/g, '<ul>$&</ul>');
-
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background-color: ${bgColor};
-            color: ${textColor};
-            padding: 20px 40px;
-            line-height: 1.6;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        h1, h2, h3, h4, h5, h6 {
-            color: ${headerColor};
-            margin-top: 24px;
-            margin-bottom: 16px;
-            font-weight: 600;
-            line-height: 1.25;
-            border-bottom: 1px solid ${borderColor};
-            padding-bottom: 8px;
-        }
-        h1 { font-size: 2em; }
-        h2 { font-size: 1.5em; }
-        h3 { font-size: 1.25em; }
-        h4 { font-size: 1em; }
-        h5 { font-size: 0.875em; }
-        h6 { font-size: 0.85em; }
-        p {
-            margin: 12px 0;
-        }
-        .code-block {
-            background-color: ${codeBlockBg};
-            border: 1px solid ${borderColor};
-            border-radius: 6px;
-            padding: 16px;
-            overflow-x: auto;
-            margin: 16px 0;
-        }
-        .code-block code {
-            background: none;
-            padding: 0;
-            font-size: 0.9em;
-        }
-        .inline-code {
-            background-color: ${inlineCodeBg};
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 0.9em;
-        }
-        ul, ol {
-            margin: 12px 0;
-            padding-left: 24px;
-        }
-        li {
-            margin: 4px 0;
-        }
-        hr {
-            border: none;
-            border-top: 2px solid ${borderColor};
-            margin: 24px 0;
-        }
-        a {
-            color: ${isDark ? '#4fc3f7' : '#0066cc'};
-            text-decoration: none;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
-        strong {
-            font-weight: 600;
-        }
-        del {
-            opacity: 0.7;
-        }
-    </style>
-</head>
-<body>
-${html}
-</body>
-</html>`;
-}
-
-function showPreview(context: vscode.ExtensionContext) {
+async function showPreview(context: vscode.ExtensionContext) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
         vscode.window.showErrorMessage('No active editor found');
@@ -507,49 +414,40 @@ function showPreview(context: vscode.ExtensionContext) {
     }
 
     const document = editor.document;
-    const markdownContent = convertToMarkdown(document);
+    const markdownContent = convertToMarkdown(document.getText());
 
-    // Determine if using dark theme (Dark = 2, HighContrast = 3)
-    const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-                   vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
+    // Create temp file for preview
+    const tempDir = os.tmpdir();
+    const originalName = path.basename(document.fileName, '.md');
+    tempFilePath = path.join(tempDir, `${originalName}_preview.md`);
 
-    if (previewPanel) {
-        previewPanel.webview.html = getPreviewHtml(markdownContent, isDark);
-        previewPanel.reveal(vscode.ViewColumn.Beside);
-    } else {
-        previewPanel = vscode.window.createWebviewPanel(
-            'claudemdPreview',
-            `Preview: ${document.fileName.split(/[\\/]/).pop()}`,
-            vscode.ViewColumn.Beside,
-            {
-                enableScripts: false,
-                retainContextWhenHidden: true
-            }
-        );
+    // Write converted content to temp file
+    fs.writeFileSync(tempFilePath, markdownContent, 'utf-8');
 
-        previewPanel.webview.html = getPreviewHtml(markdownContent, isDark);
+    // Open the temp file and show markdown preview
+    const tempUri = vscode.Uri.file(tempFilePath);
+    const tempDoc = await vscode.workspace.openTextDocument(tempUri);
+    await vscode.window.showTextDocument(tempDoc, vscode.ViewColumn.Beside, true);
 
-        previewPanel.onDidDispose(() => {
-            previewPanel = undefined;
-        }, null, context.subscriptions);
-    }
+    // Trigger VSCode's built-in markdown preview
+    await vscode.commands.executeCommand('markdown.showPreviewToSide', tempUri);
 
-    // Update preview when document changes
-    const changeListener = vscode.workspace.onDidChangeTextDocument(event => {
-        if (event.document === document && previewPanel) {
-            const updatedContent = convertToMarkdown(event.document);
-            const isDarkNow = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-                              vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-            previewPanel.webview.html = getPreviewHtml(updatedContent, isDarkNow);
+    // Close the temp document (keep preview open)
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+
+    // Set up listener to update preview when original document changes
+    const changeListener = vscode.workspace.onDidChangeTextDocument(async event => {
+        if (event.document === document && tempFilePath) {
+            const updatedContent = convertToMarkdown(event.document.getText());
+            fs.writeFileSync(tempFilePath, updatedContent, 'utf-8');
+            // The markdown preview should auto-refresh
         }
     });
 
     context.subscriptions.push(changeListener);
 }
 
-// ============================================================================
 // BEAUTIFY FUNCTIONALITY
-// ============================================================================
 
 function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
     const edits: vscode.TextEdit[] = [];
@@ -582,7 +480,7 @@ function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
             continue;
         }
 
-        // Handle closing tags - decrease indent first, then add line
+        // Handle closing tags - decrease indent first
         const closingMatch = line.match(closingTagRegex);
         if (closingMatch) {
             currentIndent = Math.max(0, currentIndent - 1);
@@ -590,7 +488,7 @@ function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
             continue;
         }
 
-        // Handle self-closing tags - same indent, no change
+        // Handle self-closing tags
         const selfClosingMatch = line.match(selfClosingTagRegex);
         if (selfClosingMatch) {
             result.push(indentString.repeat(currentIndent) + line.trim());
@@ -622,7 +520,6 @@ function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
         result.push(indentString.repeat(currentIndent) + line.trim());
     }
 
-    // Create a single edit that replaces the entire document
     const fullRange = new vscode.Range(
         document.positionAt(0),
         document.positionAt(document.getText().length)
@@ -632,9 +529,7 @@ function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
     return edits;
 }
 
-// ============================================================================
 // EXTENSION ACTIVATION
-// ============================================================================
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('ClaudeMD extension is now active');
@@ -646,9 +541,9 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(foldingProvider);
 
-    // Also register for markdown files named CLAUDE.md
+    // Also register for markdown files named CLAUDE.md or AGENT.md
     const foldingProviderMd = vscode.languages.registerFoldingRangeProvider(
-        { language: 'markdown', pattern: '**/CLAUDE.md' },
+        { language: 'markdown', pattern: '**/{CLAUDE,AGENT}.md' },
         new ClaudeMdFoldingRangeProvider()
     );
     context.subscriptions.push(foldingProviderMd);
@@ -685,7 +580,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(previewCommand);
 
-    // Register folding range command (triggers re-calculation)
+    // Register folding range command
     const foldingCommand = vscode.commands.registerCommand('claudemd.folding_range', () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -693,7 +588,6 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        // Force folding provider to recalculate by running fold all command
         vscode.commands.executeCommand('editor.foldAll').then(() => {
             vscode.window.showInformationMessage('Folding ranges created');
         });
@@ -713,6 +607,14 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
+    // Clean up temp file
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try {
+            fs.unlinkSync(tempFilePath);
+        } catch (e) {
+            // Ignore cleanup errors
+        }
+    }
     if (previewPanel) {
         previewPanel.dispose();
     }
