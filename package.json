@@ -2,7 +2,7 @@
   "name": "vscode-claudemd-syntax",
   "displayName": "Syntax highlighter for CLAUDE.md",
   "description": "An extension to beautify and highlight syntax of CLAUDE.md files including markdown and non canonical XML tags, or a mix and match of both.",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "publisher": "revoconner",
   "engines": {
     "vscode": "^1.85.0"
@@ -30,7 +30,9 @@
     "syntax highlighting",
     "anthropic"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
@@ -146,6 +148,42 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically detect CLAUDE.md files and apply syntax highlighting"
+        },
+        "claudemd.tagColors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["#FF6188", "#78DCE8", "#A9DC76", "#AB9DF2", "#FFD866", "#FC9867"],
+          "description": "Tag colors by nesting depth, cycles when nesting goes deeper than the list"
+        },
+        "claudemd.attributeNameColor": {
+          "type": "string",
+          "default": "#FFA657",
+          "description": "Color for attribute names inside opening tags"
+        },
+        "claudemd.attributeValueColor": {
+          "type": "string",
+          "default": "#C3E88D",
+          "description": "Color for quoted attribute values inside opening tags"
+        },
+        "claudemd.codeBlockColor": {
+          "type": "string",
+          "default": "#CE9178",
+          "description": "Single color for fenced code blocks"
+        },
+        "claudemd.inlineCodeColor": {
+          "type": "string",
+          "default": "#D7BA7D",
+          "description": "Single color for inline code between backticks"
+        },
+        "claudemd.invalidTagColor": {
+          "type": "string",
+          "default": "#F44747",
+          "description": "Color for unclosed, unmatched, or improperly nested tags"
+        },
+        "claudemd.colorCodeBlocks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Flat-color code blocks and inline code; disable to fall back to embedded language highlighting"
         }
       }
     }
