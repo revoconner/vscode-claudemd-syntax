@@ -73,7 +73,45 @@ All colors can be changed in Settings under **Extensions > ClaudeMD**, or in `se
 
 ## What counts as a tag
 
-A tag name starts and ends with a letter or digit and may contain `-` and `_` in between. Attributes follow the same naming rule and may optionally have a quoted value, like `<rules>`, `<rules draft>`, or `<rules priority="high" scope="all">`. Anything before an opening tag on the same line other than whitespace disqualifies it, and nothing inside backticks or fenced code is ever parsed as a tag.
+A tag name starts and ends with a letter or digit and may contain `-` and `_` in between. Attributes follow the same naming rule and may optionally have a quoted value. Anything the parser does not recognize as a tag is simply left as plain text, which matters: if an opening tag is malformed, the error will show up on its closing tag instead, because from the parser's view that closing tag now closes nothing.
+
+### Recognized as valid tags
+
+| Example | Why it works |
+| --- | --- |
+| `<rules>` | Plain tag, letters only |
+| `<critical_rules>` `<my-section>` `<step2>` | `-`, `_`, and digits are fine inside or at the end |
+| `<rules draft>` | Attribute without a value |
+| `<rules priority="high" scope="all">` | Multiple quoted attributes |
+| `<rules priority="">` | Empty value |
+| `<rules priority="high"  scope="all">` | Extra spaces between attributes are tolerated |
+| `<note>some text</note>` | Opening tag, content, and closing tag on one line |
+| An indented tag | Indentation depth never matters |
+
+Attribute values may contain letters, digits, spaces, `=`, `-`, and `_`, so `priority="very high"` and `priority="very_high"` both work.
+
+### Silently ignored (plain text, no color, no error)
+
+| Example | Why it is ignored |
+| --- | --- |
+| `<_rules>` `<rules_>` `<-rules>` | Name must start and end with a letter or digit |
+| `<rules priority=high>` | Attribute values must be in double quotes |
+| `<rules priority='high'>` | Single quotes are not recognized |
+| `<rules priority="v1.0">` | `.` is not a permitted value character, same for `!`, `/`, `:` and other symbols |
+| `<rules >` | Stray space before the closing `>` |
+| `see <rules> below` | Text before the opening tag on the same line |
+| `<\rules>` `</ rules>` | Malformed closing tags |
+| `` `<rules>` `` or any tag inside a fenced code block | Code is never parsed for tags |
+
+### Flagged as errors (red, with a warning squiggle)
+
+| Situation | Message |
+| --- | --- |
+| `<rules>` with no `</rules>` anywhere below | Tag is never closed |
+| `</rules>` with no `<rules>` above | No matching opening tag |
+| `<a>` `<b>` `</a>` `</b>` | Crossing: `<b>` is not closed before `</a>`, and `</b>` then has nothing left to close |
+
+The silent-ignore behavior and the error list combine into the one confusing case worth remembering: write `<rules priority=high>` (unquoted, so ignored) and the later `</rules>` gets flagged with "no matching opening tag", pointing you at the wrong end of the pair. If a closing tag errors and you are sure it has a partner, inspect the opening tag for a formatting slip.
 
 ## License
 
