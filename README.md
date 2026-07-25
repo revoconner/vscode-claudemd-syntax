@@ -1,6 +1,9 @@
-# ClaudeMD Syntax Highlighter
+# ClaudeMD Syntax Highlighterwith XML & MD support
 
 A Visual Studio Code extension for CLAUDE.md and AGENT.md files, the instruction files used by Claude and other AI coding assistants. These files mix regular markdown with XML-like tags, and no stock language mode highlights that combination well. This extension makes them readable.
+
+
+<img width="2239" height="1846" alt="image" src="https://github.com/user-attachments/assets/3ac34380-ada0-4b18-8285-579fd2bfac1d" />
 
 ## Features
 
@@ -8,7 +11,7 @@ A Visual Studio Code extension for CLAUDE.md and AGENT.md files, the instruction
 - **Distinct colors for attributes.** Tag names, attribute names, and attribute values each get their own color, for example in `<rules priority="high">`.
 - **Error detection.** Unclosed tags, closing tags with no opening tag, and improperly nested (crossing) tags are colored red and marked with a warning squiggle that explains what is wrong.
 - **Tag pair highlighting.** Place the cursor on any tag and its matching partner lights up, no matter how far away it is.
-- **Code stays untouched.** Fenced code blocks and inline backtick code get their own flat colors and are never mistaken for tags, so examples like `<<` or XML snippets inside code are safe.
+- **Codeblock stays untouched.** Fenced code blocks and inline backtick code get their own flat colors and are never mistaken for tags, so examples like `<<` or XML snippets inside code are safe.
 - **Folding.** Collapse any tag block, markdown header section, or code block from the gutter.
 - **Beautify.** One command indents the whole file into a clean cascading tree based on tag nesting.
 - **Preview.** Renders the file as standard markdown, converting tags into headers, using the built-in VS Code preview.
@@ -26,7 +29,7 @@ A Visual Studio Code extension for CLAUDE.md and AGENT.md files, the instruction
 Alternatively, from a terminal:
 
 ```
-code --install-extension vscode-claudemd-syntax-1.0.0.vsix
+code --install-extension vscode-claudemd-syntax-2.1.0.vsix
 ```
 
 ## Usage
