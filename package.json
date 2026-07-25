@@ -2,7 +2,7 @@
   "name": "vscode-claudemd-syntax",
   "displayName": "Syntax highlighter for CLAUDE.md",
   "description": "An extension to beautify and highlight syntax of CLAUDE.md files including markdown and non canonical XML tags, or a mix and match of both.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "publisher": "revoconner",
   "engines": {
     "vscode": "^1.85.0"
@@ -143,11 +143,6 @@
           "type": "number",
           "default": 2,
           "description": "Number of spaces used for indentation when beautifying"
-        },
-        "claudemd.autoDetect": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically detect CLAUDE.md files and apply syntax highlighting"
         },
         "claudemd.tagColors": {
           "type": "array",

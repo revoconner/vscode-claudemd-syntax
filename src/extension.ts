@@ -573,7 +573,8 @@ async function showPreview(context: vscode.ExtensionContext) {
 function beautifyDocument(document: vscode.TextDocument): vscode.TextEdit[] {
     const lines = document.getText().split(/\r?\n/);
     const result: string[] = [];
-    const indent = '  ';
+    const size = vscode.workspace.getConfiguration('claudemd').get<number>('indentSize', 2);
+    const indent = ' '.repeat(Math.max(1, Math.floor(size)));
     let depth = 0;
     let inCodeBlock = false;
     let codeBlockDepth = 0;
